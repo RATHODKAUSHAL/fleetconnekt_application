@@ -46,6 +46,7 @@ export default function RootLayout() {
         <Stack.Screen name="register" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="verify-otp" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="home" options={{ animation: 'fade' }} />
+        <Stack.Screen name="new-lr" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="transporters" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="transporter/[id]" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="profile" options={{ animation: 'fade' }} />

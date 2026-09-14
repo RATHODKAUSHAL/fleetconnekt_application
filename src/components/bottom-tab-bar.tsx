@@ -24,12 +24,18 @@ export function BottomTabBar() {
           active={pathname === '/transporters'}
         />
 
-        <Pressable accessibilityLabel="Create new LR" className="w-[72px] items-center" style={styles.newLrButton}>
-          <View className="h-[52px] w-[52px] items-center justify-center rounded-full border-4 border-white bg-[#ff7417]" style={styles.actionButton}>
-            <Ionicons name="add" size={28} color="white" />
-          </View>
-          <Text className="font-manrope-bold mt-1 text-[10px] text-[#26364b]">New LR</Text>
-        </Pressable>
+        <Link href="/new-lr" asChild>
+          <Pressable accessibilityLabel="Create new LR" className="w-[72px] items-center" style={styles.newLrButton}>
+            <View className="h-[52px] w-[52px] items-center justify-center rounded-full border-4 border-white bg-[#ff7417]" style={styles.actionButton}>
+              <Ionicons name="add" size={28} color="white" />
+            </View>
+            <Text
+              className="font-manrope-bold mt-1 text-[10px]"
+              style={{ color: pathname === '/new-lr' ? ORANGE : '#26364b' }}>
+              New LR
+            </Text>
+          </Pressable>
+        </Link>
 
         <TabButton label="Fleet" icon="truck-outline" />
         <TabLink
