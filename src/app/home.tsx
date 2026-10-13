@@ -1,24 +1,28 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { Link, useRouter } from 'expo-router';
+import { type Href, useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import type { ComponentProps, ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BottomTabBar } from '@/components/bottom-tab-bar';
-import { AppKeyboardAwareScrollView } from '@/components/keyboard-controller';
+import { AppScreen } from '@/components/app-shell';
+import { SITE_URL } from '@/config';
+import { publicApi, type ApiTransporter, type Location } from '@/services/api';
 
 const ORANGE = '#ff7417';
 const NAVY = '#10243e';
 const TRUCK_IMAGE = require('@/assets/images/App-Images/ChatGPT Image Aug 22, 2026, 02_46_02 PM.png');
+const CITY_TINTS = ['#fff2e7', '#eaf2ff', '#f3eaff', '#e9f7f1', '#fff0ef', '#eef7e9'];
 
 type MaterialIconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -28,103 +32,96 @@ const stats: { icon: MaterialIconName; value: string; label: string; color: stri
   { icon: 'map-marker-outline', value: '250+', label: 'Cities Covered', color: '#17806d' },
 ];
 
-const transporters = [
-  { name: 'Sharma Transport Co.', rating: '4.8', reviews: '320 reviews', route: 'Ahmedabad → Mumbai', verified: true },
-  { name: 'Global Roadways', rating: '4.7', reviews: '186 reviews', route: 'Surat → Delhi', verified: true },
-];
-
-const cities = [
-  { name: 'Ahmedabad', state: 'Gujarat', code: 'AMD', tint: '#fff2e7' },
-  { name: 'Mumbai', state: 'Maharashtra', code: 'BOM', tint: '#eaf2ff' },
-  { name: 'Delhi', state: 'Delhi', code: 'DEL', tint: '#f3eaff' },
-  { name: 'Bengaluru', state: 'Karnataka', code: 'BLR', tint: '#e9f7f1' },
-  { name: 'Pune', state: 'Maharashtra', code: 'PUN', tint: '#fff0ef' },
-  { name: 'Kolkata', state: 'West Bengal', code: 'CCU', tint: '#eef7e9' },
+const workspace: { label: string; description: string; href: Href; icon: MaterialIconName; color: string }[] = [
+  { label: 'Bookings', description: 'Create and manage truck bookings', href: '/bookings', icon: 'file-document-multiple-outline', color: ORANGE },
+  { label: 'Customers', description: 'Customer and company details', href: '/customers', icon: 'account-outline', color: '#3578e5' },
+  { label: 'Vendors', description: 'Add and update vendor partners', href: '/vendors', icon: 'truck-outline', color: '#17806d' },
+  { label: 'Verify vehicle', description: 'Fetch VAHAN / RC details', href: '/verify-vehicle', icon: 'map-marker-check-outline', color: '#7a4fd6' },
 ];
 
 const CITY_CARD_WIDTH = 164;
 const CITY_GAP = 12;
 
-export default function HomeRoute() {
-  const insets = useSafeAreaInsets();
-
-  return (
-    <View className="flex-1 bg-[#f7f7f4]">
-      <SafeAreaView edges={['top']} className="flex-1">
-        <AppKeyboardAwareScrollView
-          bottomOffset={18}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: 94 + insets.bottom }]}>
-          <View className="w-full max-w-[560px] self-center px-[18px] pt-1">
-            <Header />
-
-            <Greeting />
-
-            <HeroCard />
-
-            <View className="mt-4 flex-row gap-2.5">
-              {stats.map((stat) => (
-                <StatCard key={stat.label} {...stat} />
-              ))}
-            </View>
-
-            <View className="mb-2.5 mt-5 flex-row items-center justify-between">
-              <Text className="font-manrope-extrabold text-[17px] text-[#17253a]">Featured Transporters</Text>
-              <Link href="/transporters" asChild>
-                <Pressable hitSlop={10}>
-                  <Text className="font-manrope-bold text-xs text-[#f08a3c]">View All</Text>
-                </Pressable>
-              </Link>
-            </View>
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.transporterList}>
-            {transporters.map((transporter) => (
-              <TransporterCard key={transporter.name} {...transporter} />
-            ))}
-          </ScrollView>
-
-          <CityMarquee />
-        </AppKeyboardAwareScrollView>
-      </SafeAreaView>
-
-      <BottomTabBar />
-    </View>
-  );
+function openWebsite(path: string) {
+  void WebBrowser.openBrowserAsync(`${SITE_URL}${path}`);
 }
 
-function Header() {
+export default function HomeRoute() {
+  const [transporters, setTransporters] = useState<ApiTransporter[]>([]);
+  const [cities, setCities] = useState<Location[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [citiesError, setCitiesError] = useState(false);
+
+  const load = useCallback(async () => {
+    const [homeResult, citiesResult] = await Promise.allSettled([publicApi.home(), publicApi.featuredCities()]);
+    if (homeResult.status === 'fulfilled') setTransporters(homeResult.value.featured_transporters);
+    if (citiesResult.status === 'fulfilled') setCities(citiesResult.value);
+    setCitiesError(citiesResult.status === 'rejected');
+  }, []);
+
+  useEffect(() => {
+    load().finally(() => setLoading(false));
+  }, [load]);
+
+  const refresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
+
   return (
-    <View className="flex-row items-center justify-between">
-      <View className="flex-row items-center gap-2">
-        <View className="h-9 w-9 items-center justify-center rounded-xl bg-[#fff0e5]">
-          <MaterialCommunityIcons name="truck-fast-outline" size={23} color={ORANGE} />
+    <AppScreen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={ORANGE} />}>
+      <View className="w-full max-w-[560px] self-center px-[18px]">
+        <Greeting />
+
+        <HeroCard />
+
+        <View className="mt-4 flex-row gap-2.5">
+          {stats.map((stat) => (
+            <StatCard key={stat.label} {...stat} />
+          ))}
         </View>
-        <Text className="font-manrope-extrabold text-[19px] tracking-[-0.5px] text-[#142238]">
-          Fleet<Text className="font-manrope-extrabold text-[#f27022]">Connect</Text>
-        </Text>
+
+        <Text className="font-manrope-extrabold mb-2.5 mt-5 text-[17px] text-[#17253a]">Your Workspace</Text>
+        <View className="flex-row flex-wrap justify-between gap-y-2.5">
+          {workspace.map((item) => (
+            <WorkspaceCard key={item.label} {...item} />
+          ))}
+        </View>
+
+        <View className="mb-2.5 mt-5 flex-row items-center justify-between">
+          <Text className="font-manrope-extrabold text-[17px] text-[#17253a]">Featured Transporters</Text>
+          <Pressable hitSlop={10} onPress={() => openWebsite('/transporters')}>
+            <Text className="font-manrope-bold text-xs text-[#f08a3c]">View All</Text>
+          </Pressable>
+        </View>
       </View>
 
-      <View className="flex-row items-center gap-2.5">
-        <Pressable className="relative h-9 w-9 items-center justify-center rounded-full bg-white">
-          <Ionicons name="notifications-outline" size={21} color={NAVY} />
-          <View className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#ef4444]" />
-        </Pressable>
-        <View className="h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-[#dfaa79]">
-          <MaterialCommunityIcons name="account" size={23} color="#51331f" />
+      {loading ? (
+        <View className="h-[150px] items-center justify-center">
+          <ActivityIndicator color={ORANGE} />
         </View>
-      </View>
-    </View>
+      ) : transporters.length === 0 ? (
+        <View className="mx-[18px] rounded-[16px] border border-[#ebe8e1] bg-white px-4 py-5" style={styles.card}>
+          <Text className="font-manrope-semibold text-center text-[11px] text-[#7b8797]">Featured transporters will appear here.</Text>
+        </View>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.transporterList}>
+          {transporters.map((transporter) => (
+            <TransporterCard key={transporter.id} transporter={transporter} />
+          ))}
+        </ScrollView>
+      )}
+
+      <CityMarquee cities={cities} loading={loading} error={citiesError} onRetry={refresh} />
+    </AppScreen>
   );
 }
 
 function Greeting() {
   return (
-    <View className="mb-3.5 mt-5">
+    <View className="mb-3.5 mt-2">
       <View className="flex-row items-center gap-1.5">
         {/* Here is a greetig but it looks bad so i remove */}
       </View>
@@ -133,12 +130,11 @@ function Greeting() {
 }
 
 function HeroCard() {
-  const router = useRouter();
   const [query, setQuery] = useState('');
 
   const search = () => {
     const value = query.trim();
-    router.push({ pathname: '/transporters', params: value ? { query: value } : {} });
+    openWebsite(value ? `/transporters?search=${encodeURIComponent(value)}` : '/transporters');
   };
 
   return (
@@ -185,24 +181,10 @@ function HeroCard() {
   );
 }
 
-function StatCard({
-  icon,
-  value,
-  label,
-  color,
-}: {
-  icon: MaterialIconName;
-  value: string;
-  label: string;
-  color: string;
-}) {
+function StatCard({ icon, value, label, color }: { icon: MaterialIconName; value: string; label: string; color: string }) {
   return (
-    <View
-      className="min-w-0 flex-1 rounded-[14px] border border-[#eeece7] bg-white px-2.5 py-3"
-      style={styles.card}>
-      <View
-        className="mb-2 h-7 w-7 items-center justify-center rounded-lg"
-        style={{ backgroundColor: `${color}16` }}>
+    <View className="min-w-0 flex-1 rounded-[14px] border border-[#eeece7] bg-white px-2.5 py-3" style={styles.card}>
+      <View className="mb-2 h-7 w-7 items-center justify-center rounded-lg" style={{ backgroundColor: `${color}16` }}>
         <MaterialCommunityIcons name={icon} size={18} color={color} />
       </View>
       <Text className="font-manrope-extrabold text-[16px] text-[#17253a]">{value}</Text>
@@ -211,41 +193,56 @@ function StatCard({
   );
 }
 
-function TransporterCard({
-  name,
-  rating,
-  reviews,
-  route,
-  verified,
-}: {
-  name: string;
-  rating: string;
-  reviews: string;
-  route: string;
-  verified: boolean;
-}) {
+function WorkspaceCard({ label, description, href, icon, color }: (typeof workspace)[number]) {
+  const router = useRouter();
   return (
-    <View
+    <Pressable
+      onPress={() => router.push(href)}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      className="w-[48.5%] rounded-[14px] border border-[#eeece7] bg-white p-3 active:opacity-90"
+      style={styles.card}>
+      <View className="flex-row items-start justify-between">
+        <View className="h-9 w-9 items-center justify-center rounded-xl" style={{ backgroundColor: `${color}16` }}>
+          <MaterialCommunityIcons name={icon} size={20} color={color} />
+        </View>
+        <View className="h-7 w-7 items-center justify-center rounded-full bg-[#f4f7fa]">
+          <Ionicons name="arrow-forward" size={13} color="#66768a" />
+        </View>
+      </View>
+      <Text className="font-manrope-extrabold mt-2.5 text-[13px] text-[#17253a]">{label}</Text>
+      <Text numberOfLines={2} className="font-manrope-medium mt-0.5 text-[9px] leading-3 text-[#7b8797]">
+        {description}
+      </Text>
+    </Pressable>
+  );
+}
+
+function TransporterCard({ transporter }: { transporter: ApiTransporter }) {
+  const location = [transporter.city?.name, transporter.state?.name].filter(Boolean).join(', ') || 'India';
+  const services = (transporter.service_types?.length ? transporter.service_types : transporter.services ?? []).slice(0, 3);
+
+  return (
+    <Pressable
+      onPress={() => openWebsite(`/transporters/${transporter.slug}`)}
+      accessibilityRole="button"
+      accessibilityLabel={`View ${transporter.name}`}
       className="w-[300px] overflow-hidden rounded-[16px] border border-[#ebe8e1] bg-white"
       style={styles.card}>
       <View>
-        <Image
-          source={TRUCK_IMAGE}
-          contentFit="cover"
-          contentPosition="center"
-          transition={250}
-          style={styles.transporterImage}
-        />
+        <Image source={TRUCK_IMAGE} contentFit="cover" contentPosition="center" transition={250} style={styles.transporterImage} />
         <View className="absolute bottom-2 left-2 flex-row items-center rounded-full bg-black/55 px-2 py-1">
           <MaterialCommunityIcons name="map-marker-radius-outline" size={11} color="white" />
-          <Text className="font-manrope-semibold ml-1 text-[9px] text-white">{route}</Text>
+          <Text className="font-manrope-semibold ml-1 text-[9px] text-white">{location}</Text>
         </View>
       </View>
       <View className="px-3 py-2.5">
         <View className="flex-row items-center justify-between">
           <View className="min-w-0 flex-1 flex-row items-center">
-            <Text className="font-manrope-bold mr-2 text-[13px] text-[#173c68]">{name}</Text>
-            {verified ? (
+            <Text numberOfLines={1} className="font-manrope-bold mr-2 shrink text-[13px] text-[#173c68]">
+              {transporter.name}
+            </Text>
+            {transporter.is_verified ? (
               <View className="rounded-full bg-[#ddecff] px-2 py-0.5">
                 <Text className="font-manrope-bold text-[8px] text-[#3283db]">Verified</Text>
               </View>
@@ -256,31 +253,28 @@ function TransporterCard({
           </View>
         </View>
         <View className="mt-1 flex-row items-center">
-          <Ionicons name="star" size={12} color="#f49a32" />
-          <Text className="font-manrope-bold ml-1 text-[10px] text-[#2d3a4d]">{rating}</Text>
-          <Text className="font-manrope ml-1 text-[10px] text-[#8290a1]">({reviews})</Text>
-          <View className="ml-2 h-1 w-1 rounded-full bg-[#c1c8d0]" />
-          <Text className="font-manrope-medium ml-2 text-[9px] text-[#17806d]">Available now</Text>
+          <Ionicons name="call-outline" size={12} color="#f49a32" />
+          <Text className="font-manrope-bold ml-1 text-[10px] text-[#2d3a4d]">{transporter.phone || 'Contact on website'}</Text>
         </View>
-        <View className="mt-2 flex-row gap-1.5">
-          <Tag>Full Truck Load</Tag>
-          <Tag>Part Load</Tag>
-          <Tag>Container</Tag>
+        <View className="mt-2 flex-row flex-wrap gap-1.5">
+          {services.length ? services.map((service) => <Tag key={service.id}>{service.name}</Tag>) : <Tag>Transport services</Tag>}
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
-function CityMarquee() {
-  const router = useRouter();
+function CityMarquee({ cities, loading, error, onRetry }: { cities: Location[]; loading: boolean; error: boolean; onRetry: () => void }) {
   const scrollRef = useRef<ScrollView>(null);
   const offsetRef = useRef(0);
   const interactingRef = useRef(false);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const distance = cities.length * (CITY_CARD_WIDTH + CITY_GAP);
+  // Only loop when there are enough cards to fill the screen.
+  const loops = cities.length >= 3;
 
   useEffect(() => {
+    if (!loops) return;
     offsetRef.current = distance;
     const startTimer = setTimeout(() => scrollRef.current?.scrollTo({ x: distance, animated: false }), 50);
     const ticker = setInterval(() => {
@@ -296,7 +290,7 @@ function CityMarquee() {
       clearInterval(ticker);
       if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
     };
-  }, [distance]);
+  }, [distance, loops]);
 
   const pauseAutoScroll = () => {
     interactingRef.current = true;
@@ -311,6 +305,7 @@ function CityMarquee() {
   };
 
   const normalizePosition = (offset: number) => {
+    if (!loops) return;
     let normalized = offset;
     if (offset < distance * 0.35) normalized = offset + distance;
     else if (offset > distance * 2.65) normalized = offset - distance;
@@ -320,72 +315,83 @@ function CityMarquee() {
     }
   };
 
+  const items = loops ? [...cities, ...cities, ...cities] : cities;
+
   return (
     <View className="mt-6 overflow-hidden pb-5">
       <View className="mb-3 flex-row items-end justify-between px-[18px]">
         <View className="min-w-0 flex-1 pr-3">
           <View className="mb-1.5 self-start rounded-full bg-[#fff0e6] px-2.5 py-1">
-            <Text className="font-manrope-bold text-[8px] uppercase tracking-[0.6px] text-[#f27022]">
-              Featured cities
-            </Text>
+            <Text className="font-manrope-bold text-[8px] uppercase tracking-[0.6px] text-[#f27022]">Featured cities</Text>
           </View>
           <Text className="font-manrope-extrabold text-[17px] text-[#17253a]">Browse Featured Cities</Text>
-          <Text className="font-manrope-medium mt-0.5 text-[10px] text-[#778398]">
-            Find verified transporters in major logistics hubs
-          </Text>
+          <Text className="font-manrope-medium mt-0.5 text-[10px] text-[#778398]">Find verified transporters in major logistics hubs</Text>
         </View>
         <View className="mb-0.5 flex-row items-center rounded-xl border border-[#e5e9ef] bg-white px-2.5 py-2">
           <Ionicons name="location-outline" size={14} color="#3578e5" />
-          <Text className="font-manrope-bold ml-1 text-[9px] text-[#26364b]">6 cities</Text>
+          <Text className="font-manrope-bold ml-1 text-[9px] text-[#26364b]">
+            {cities.length} {cities.length === 1 ? 'city' : 'cities'}
+          </Text>
         </View>
       </View>
 
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        scrollEventThrottle={16}
-        onTouchStart={pauseAutoScroll}
-        onTouchEnd={resumeAutoScroll}
-        onScrollBeginDrag={pauseAutoScroll}
-        onScrollEndDrag={resumeAutoScroll}
-        onMomentumScrollEnd={(event) => {
-          normalizePosition(event.nativeEvent.contentOffset.x);
-          resumeAutoScroll();
-        }}
-        onScroll={(event) => {
-          offsetRef.current = event.nativeEvent.contentOffset.x;
-        }}
-        contentContainerStyle={styles.cityList}>
-        {[...cities, ...cities, ...cities].map((city, index) => (
-          <CityCard
-            key={`${city.code}-${index}`}
-            {...city}
-            onPress={() =>
-              router.push({
-                pathname: '/transporters',
-                params: { city: city.name, state: city.state },
-              })
-            }
-          />
-        ))}
-      </ScrollView>
+      {loading ? (
+        <View className="h-[140px] items-center justify-center">
+          <ActivityIndicator color={ORANGE} />
+        </View>
+      ) : error && cities.length === 0 ? (
+        <View className="mx-[18px] items-center rounded-[16px] border border-[#e4e7ec] bg-white px-4 py-5" style={styles.cityCard}>
+          <Text className="font-manrope-semibold text-[11px] text-[#7b8797]">We couldn&apos;t load featured cities right now.</Text>
+          <Pressable onPress={onRetry} hitSlop={8} className="mt-2 flex-row items-center">
+            <Ionicons name="refresh" size={14} color={ORANGE} />
+            <Text className="font-manrope-bold ml-1 text-xs text-[#f27022]">Try again</Text>
+          </Pressable>
+        </View>
+      ) : cities.length === 0 ? (
+        <View className="mx-[18px] rounded-[16px] border border-[#e4e7ec] bg-white px-4 py-5" style={styles.cityCard}>
+          <Text className="font-manrope-semibold text-center text-[11px] text-[#7b8797]">Featured cities will appear here.</Text>
+        </View>
+      ) : (
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onTouchStart={pauseAutoScroll}
+          onTouchEnd={resumeAutoScroll}
+          onScrollBeginDrag={pauseAutoScroll}
+          onScrollEndDrag={resumeAutoScroll}
+          onMomentumScrollEnd={(event) => {
+            normalizePosition(event.nativeEvent.contentOffset.x);
+            resumeAutoScroll();
+          }}
+          onScroll={(event) => {
+            offsetRef.current = event.nativeEvent.contentOffset.x;
+          }}
+          contentContainerStyle={styles.cityList}>
+          {items.map((city, index) => (
+            <CityCard
+              key={`${city.id}-${index}`}
+              city={city}
+              tint={CITY_TINTS[(index % cities.length) % CITY_TINTS.length]}
+              onPress={() => openWebsite(city.parent?.slug ? `/transporters/${city.parent.slug}/${city.slug}` : '/transporters')}
+            />
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
 
-function CityCard({
-  name,
-  state,
-  code,
-  tint,
-  onPress,
-}: (typeof cities)[number] & { onPress: () => void }) {
+function CityCard({ city, tint, onPress }: { city: Location; tint: string; onPress: () => void }) {
+  const state = city.parent?.name ?? 'India';
+  const code = city.parent?.code ?? state.slice(0, 3).toUpperCase();
+
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`View transporters serving ${name}`}
+      accessibilityLabel={`View transporters serving ${city.name}`}
       className="overflow-hidden rounded-[16px] border border-[#e4e7ec] bg-white"
       style={[styles.cityCard, { width: CITY_CARD_WIDTH }]}>
       <View className="relative h-[88px] overflow-hidden" style={{ backgroundColor: tint }}>
@@ -400,9 +406,9 @@ function CityCard({
       </View>
       <View className="px-3 py-2.5">
         <View className="flex-row items-center justify-between">
-          <View>
-            <Text className="font-manrope-bold text-xs text-[#17253a]">{name}</Text>
-            <Text className="font-manrope-semibold mt-0.5 text-[9px] text-[#3578e5]">{state}</Text>
+          <View className="min-w-0 flex-1">
+            <Text numberOfLines={1} className="font-manrope-bold text-xs text-[#17253a]">{city.name}</Text>
+            <Text numberOfLines={1} className="font-manrope-semibold mt-0.5 text-[9px] text-[#3578e5]">{state}</Text>
           </View>
           <View className="h-7 w-7 items-center justify-center rounded-full bg-[#f4f7fa]">
             <Ionicons name="arrow-forward" size={13} color="#66768a" />
@@ -422,9 +428,6 @@ function Tag({ children }: { children: ReactNode }) {
 }
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    flexGrow: 1,
-  },
   hero: {
     shadowColor: '#0e233d',
     shadowOffset: { width: 0, height: 5 },

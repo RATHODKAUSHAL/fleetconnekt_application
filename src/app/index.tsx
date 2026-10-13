@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   ImageBackground,
@@ -10,6 +10,8 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { needsCompanyProfile, useAuth } from '@/context/auth';
 
 const WELCOME_IMAGE = require('@/assets/images/App-Images/ChatGPT Image Aug 22, 2026, 05_05_21 PM.png');
 const AnimatedImageBackground = Animated.createAnimatedComponent(ImageBackground);
@@ -25,6 +27,8 @@ const statistics = [
 export default function WelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user, token, loading } = useAuth();
+  const [introDone, setIntroDone] = useState(false);
   const { width, height } = useWindowDimensions();
   const backgroundOpacity = useRef(new Animated.Value(0)).current;
   const brandProgress = useRef(new Animated.Value(0)).current;
@@ -65,13 +69,20 @@ export default function WelcomeScreen() {
     ]);
 
     entrance.start();
-    const navigationTimer = setTimeout(() => router.replace('/login'), 2450);
+    const navigationTimer = setTimeout(() => setIntroDone(true), 2450);
 
     return () => {
       entrance.stop();
       clearTimeout(navigationTimer);
     };
-  }, [backgroundOpacity, brandProgress, router, statsProgress, taglineOpacity]);
+  }, [backgroundOpacity, brandProgress, statsProgress, taglineOpacity]);
+
+  useEffect(() => {
+    if (!introDone || loading) return;
+    if (!token || !user) router.replace('/login');
+    else if (needsCompanyProfile(user)) router.replace({ pathname: '/profile-edit', params: { onboarding: '1' } });
+    else router.replace('/home');
+  }, [introDone, loading, router, token, user]);
 
   return (
     <View style={styles.screen}>
