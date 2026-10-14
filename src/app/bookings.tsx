@@ -1,9 +1,10 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, RefreshControl, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, Text, View } from 'react-native';
 
 import { AppScreen } from '@/components/app-shell';
+import { BookingDeleteDialog } from '@/components/booking-delete-dialog';
 import { ListHeader, Meta } from '@/components/list';
 import { Banner, ChipButton, EmptyState, FilterChips, LoadingState, NAVY, ORANGE, Pill, SearchBar, styles } from '@/components/ui';
 import { VehicleLocationSheet } from '@/components/vehicle-location-sheet';
@@ -45,6 +46,8 @@ export default function BookingsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingUid, setDeletingUid] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Booking | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [locateVehicle, setLocateVehicle] = useState<string | null>(null);
   const requestId = useRef(0);
   const firstFocus = useRef(true);
@@ -103,26 +106,25 @@ export default function BookingsScreen() {
   };
 
   function confirmDelete(booking: Booking) {
-    Alert.alert('Delete booking?', `This will remove ${booking.booking_number}. This action cannot be undone.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          if (!token || !companyId) return;
-          setDeletingUid(booking.uid);
-          try {
-            await bookingApi.delete(token, companyId, booking.uid);
-            setBookings((current) => current.filter((item) => item.uid !== booking.uid));
-            setTotal((current) => Math.max(current - 1, 0));
-          } catch (issue) {
-            Alert.alert('Could not delete booking', errorMessage(issue));
-          } finally {
-            setDeletingUid(null);
-          }
-        },
-      },
-    ]);
+    setDeleteError(null);
+    setPendingDelete(booking);
+  }
+
+  async function deleteBooking() {
+    const booking = pendingDelete;
+    if (!booking || !token || !companyId) return;
+    setDeleteError(null);
+    setDeletingUid(booking.uid);
+    try {
+      await bookingApi.delete(token, companyId, booking.uid);
+      setBookings((current) => current.filter((item) => item.uid !== booking.uid));
+      setTotal((current) => Math.max(current - 1, 0));
+      setPendingDelete(null);
+    } catch (issue) {
+      setDeleteError(errorMessage(issue, 'Could not delete booking.'));
+    } finally {
+      setDeletingUid(null);
+    }
   }
 
   return (
@@ -202,6 +204,13 @@ export default function BookingsScreen() {
         </View>
       </View>
       <VehicleLocationSheet vehicleNumber={locateVehicle} onClose={() => setLocateVehicle(null)} />
+      <BookingDeleteDialog
+        booking={pendingDelete}
+        deleting={!!pendingDelete && deletingUid === pendingDelete.uid}
+        error={deleteError}
+        onConfirm={deleteBooking}
+        onCancel={() => setPendingDelete(null)}
+      />
     </AppScreen>
   );
 }

@@ -417,6 +417,89 @@ export function BottomSheet({
   );
 }
 
+/** Centered confirmation dialog for destructive actions. Stays open while `loading` so errors can show inline. */
+export function ConfirmDialog({
+  visible,
+  title,
+  message,
+  details,
+  confirmLabel = 'Delete',
+  cancelLabel = 'Cancel',
+  icon = 'trash-outline',
+  loading,
+  error,
+  onConfirm,
+  onCancel,
+}: {
+  visible: boolean;
+  title: string;
+  message: string;
+  details?: ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  icon?: IonIconName;
+  loading?: boolean;
+  error?: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const close = () => {
+    if (!loading) onCancel();
+  };
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={close}>
+      <View className="flex-1 items-center justify-center px-6">
+        <Pressable className="absolute inset-0 bg-[#061934]/55" onPress={close} accessibilityLabel="Close" />
+        <View
+          accessibilityViewIsModal
+          className="w-full max-w-[380px] rounded-[20px] border border-[#ebe8e1] bg-white px-5 pb-5 pt-6"
+          style={styles.dialogShadow}>
+          <View className="items-center">
+            <View className="h-[68px] w-[68px] items-center justify-center rounded-full bg-[#fff5f6]">
+              <View className="h-[50px] w-[50px] items-center justify-center rounded-full border border-[#f6cfd3] bg-[#ffe9ec]">
+                <Ionicons name={icon} size={24} color="#cf3d3d" />
+              </View>
+            </View>
+            <Text className="font-manrope-extrabold mt-4 text-center text-[17px] text-[#10243e]">{title}</Text>
+            <Text className="font-manrope-medium mt-1.5 text-center text-[12px] leading-[18px] text-[#617091]">{message}</Text>
+          </View>
+
+          {details ? <View className="mt-4 rounded-[12px] border border-[#ebe8e1] bg-[#f8f8f5] p-3">{details}</View> : null}
+
+          <View className="mt-3 flex-row items-center rounded-[10px] bg-[#fffaf4] px-2.5 py-2">
+            <Ionicons name="warning-outline" size={15} color={ORANGE} />
+            <Text className="font-manrope-semibold ml-1.5 min-w-0 flex-1 text-[10px] text-[#8a4a12]">This action cannot be undone.</Text>
+          </View>
+
+          {error ? (
+            <View className="mt-3">
+              <Banner tone="error" message={error} />
+            </View>
+          ) : null}
+
+          <View className="mt-5 flex-row gap-2.5">
+            <Pressable
+              onPress={close}
+              disabled={loading}
+              accessibilityRole="button"
+              className={`h-12 flex-1 items-center justify-center rounded-[12px] border border-[#d8dce3] bg-white ${loading ? 'opacity-50' : ''}`}>
+              <Text className="font-manrope-extrabold text-[13px] text-[#10243e]">{cancelLabel}</Text>
+            </Pressable>
+            <Pressable
+              onPress={onConfirm}
+              disabled={loading}
+              accessibilityRole="button"
+              className={`h-12 flex-1 flex-row items-center justify-center rounded-[12px] bg-[#cf3d3d] ${loading ? 'opacity-80' : ''}`}>
+              {loading ? <ActivityIndicator size="small" color="white" /> : <Ionicons name={icon} size={16} color="white" />}
+              <Text className="font-manrope-extrabold ml-1.5 text-[13px] text-white">{loading ? 'Deleting...' : confirmLabel}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export function OptionSheet<T extends string>({
   visible,
   title,
@@ -655,6 +738,13 @@ export const styles = StyleSheet.create({
     shadowOpacity: 0.22,
     shadowRadius: 10,
     elevation: 5,
+  },
+  dialogShadow: {
+    shadowColor: '#061934',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    elevation: 12,
   },
   chipRow: {
     gap: 8,

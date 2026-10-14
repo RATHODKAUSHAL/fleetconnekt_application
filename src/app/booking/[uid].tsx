@@ -1,9 +1,10 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, RefreshControl, Share, Text, View } from 'react-native';
+import { Linking, Pressable, RefreshControl, Share, Text, View } from 'react-native';
 
 import { SubScreen } from '@/components/app-shell';
+import { BookingDeleteDialog } from '@/components/booking-delete-dialog';
 import { BookingPayments } from '@/components/booking-payments';
 import { Banner, ChipButton, FilterChips, InfoRow, LoadingState, NAVY, ORANGE, Pill, Section, styles } from '@/components/ui';
 import { openInMaps } from '@/components/vehicle-location-sheet';
@@ -45,6 +46,8 @@ export default function BookingDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token || !companyId || !uid) return;
@@ -82,25 +85,23 @@ export default function BookingDetailScreen() {
 
   function confirmDelete() {
     if (!booking) return;
-    Alert.alert('Delete booking?', `This will remove ${booking.booking_number}. This action cannot be undone.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          if (!token || !companyId) return;
-          setDeleting(true);
-          try {
-            await bookingApi.delete(token, companyId, booking.uid);
-            router.back();
-          } catch (issue) {
-            Alert.alert('Could not delete booking', errorMessage(issue));
-          } finally {
-            setDeleting(false);
-          }
-        },
-      },
-    ]);
+    setDeleteError(null);
+    setConfirmingDelete(true);
+  }
+
+  async function deleteBooking() {
+    if (!booking || !token || !companyId) return;
+    setDeleteError(null);
+    setDeleting(true);
+    try {
+      await bookingApi.delete(token, companyId, booking.uid);
+      setConfirmingDelete(false);
+      router.back();
+    } catch (issue) {
+      setDeleteError(errorMessage(issue, 'Could not delete booking.'));
+    } finally {
+      setDeleting(false);
+    }
   }
 
   const tone = booking ? bookingStatusTone[booking.status] ?? bookingStatusTone.pending : null;
@@ -160,6 +161,13 @@ export default function BookingDetailScreen() {
           {tab === 'payments' ? <BookingPayments bookingUid={booking.uid} onSummaryChange={setSummary} /> : null}
         </View>
       )}
+      <BookingDeleteDialog
+        booking={confirmingDelete ? booking : null}
+        deleting={deleting}
+        error={deleteError}
+        onConfirm={deleteBooking}
+        onCancel={() => setConfirmingDelete(false)}
+      />
     </SubScreen>
   );
 }
